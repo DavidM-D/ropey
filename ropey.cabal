@@ -42,6 +42,7 @@ common shared
     LambdaCase
     FlexibleInstances
     DefaultSignatures
+    TypeApplications
 
 library
   import: shared
