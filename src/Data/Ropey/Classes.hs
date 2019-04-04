@@ -1,8 +1,11 @@
+{-# Language TypeFamilies #-}
+{-# Language KindSignatures #-}
 module Data.Ropey.Classes where
 
 
 import Data.Ropey.Prelude
 import qualified Prelude as P
+import GHC.Stack
 
 class Monoid container => Container container element where
   {-# MINIMAL cons, snoc, uncons, unsnoc #-}
@@ -25,18 +28,11 @@ class Monoid container => Container container element where
 
   pack :: [element] -> container
   pack = \case
-    (x:xs) -> cons x $ pack xs
+    x:xs -> cons x $ pack xs
     [] -> mempty
 
 
--- | Indexed laws
---   let l = deIndex (id @index) $ length r
---   in length (unpack (take (Index @index n) r) :: [t]) == max l n
---   splitAt n r == (take n r, drop n r)
---   splitAtEnd n r == (takeEnd n r, dropEnd n r)
---   splitAtEnd n == splitAt n . reverse
-class (Monoid container, Num index) => Indexed index container where
-  -- | slices of size n where n >= 0
+class Monoid container => Indexed index container where
   slices :: [index] -> container -> [container]
   length :: container -> index
 
@@ -66,3 +62,13 @@ drop ::
   container ->
   container
 drop i = snd . splitAt i
+
+type Partial = HasCallStack
+
+-- | This allows you to write performant algorithms which break
+--   data structures over
+class Breakable container element where
+  type BreakInfo container :: *
+  break :: BreakInfo container -> (container, container)
+  prepend :: element -> BreakInfo container -> BreakInfo container
+  append :: BreakInfo container -> element -> BreakInfo container

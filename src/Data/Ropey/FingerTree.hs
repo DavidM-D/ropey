@@ -91,23 +91,24 @@ viewl :: Measured v a => FingerTree v a -> FT.ViewL (FingerTree v) a
 viewl = c . FT.viewl . unFT where
   -- | I hope this gets optimised away, I suspect GHC can remove "inspect the
   --   structure then always return the same structure" at runtime
-  c :: FT.ViewL (FT.FingerTree v) (M v a) ->
+  _c, c :: FT.ViewL (FT.FingerTree v) (M v a) ->
        FT.ViewL (FingerTree v) a
   c = unsafeCoerce
-  -- c = \case
-  --   FT.EmptyL -> FT.EmptyL
-  --   (M v) :< ft -> v :< FT ft
+  -- | _c is a witness that unsafeCoerce isn't so unsafe
+  _c = \case
+    FT.EmptyL -> FT.EmptyL
+    (M v) FT.:< ft -> v FT.:< FT ft
 
 -- | /O(1)/. Analyse the right end of a sequence.
 viewr :: Measured v a => FingerTree v a -> FT.ViewR (FingerTree v) a
 viewr = c . FT.viewr . unFT where
   -- | same as above
-  c :: FT.ViewR (FT.FingerTree v) (M v a) ->
-       FT.ViewR (FingerTree v) a
+  _c, c :: FT.ViewR (FT.FingerTree v) (M v a) ->
+           FT.ViewR (FingerTree v) a
   c = unsafeCoerce
-  -- c = \case
-  --   FT.EmptyR -> FT.EmptyR
-  --   ft :> (M v) -> FT ft :> v
+  _c = \case
+    FT.EmptyR -> FT.EmptyR
+    ft FT.:> (M v) -> FT ft FT.:> v
 
 search :: Measured v a =>
           (v -> v -> Bool) ->
@@ -117,14 +118,14 @@ search p = c
          . (FT.search p)
          . (unFT) where
   -- | same as above
-  c :: FT.SearchResult v (M v a) ->
-       FT.SearchResult v a
+  _c, c :: FT.SearchResult v (M v a) ->
+           FT.SearchResult v a
   c = unsafeCoerce
-  -- c = \case
-  --   FT.Position ftA (M v) ftB -> FT.Position (FT.unsafeFmap coerce ftA) v (FT.unsafeFmap coerce ftB)
-  --   FT.OnLeft -> FT.OnLeft
-  --   FT.OnRight -> FT.OnRight
-  --   FT.Nowhere -> FT.Nowhere
+  _c = \case
+    FT.Position ftA (M v) ftB -> FT.Position (FT.unsafeFmap coerce ftA) v (FT.unsafeFmap coerce ftB)
+    FT.OnLeft -> FT.OnLeft
+    FT.OnRight -> FT.OnRight
+    FT.Nowhere -> FT.Nowhere
 
 -- For predictable results, one should ensure that there is only one such
 -- point, i.e. that the predicate is /monotonic/.

@@ -43,6 +43,7 @@ common shared
     FlexibleInstances
     DefaultSignatures
     TypeApplications
+    ConstraintKinds
 
 library
   import: shared
