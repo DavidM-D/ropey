@@ -1,3 +1,6 @@
+{-# Language GeneralizedNewtypeDeriving #-}
+{-# Language FlexibleContexts #-}
+{-# Language UndecidableInstances #-}
 -- | This module is equivalent to Data.FingerTree except
 --   <https://hub.darcs.net/ross/fingertree/issue/1 issue 1> has been fixed
 --   the performance is identical and converting between the data types is free
@@ -32,13 +35,73 @@ module Data.Ropey.FingerTree (
 import qualified Prelude as P
 import Prelude hiding (null, reverse)
 import qualified Data.FingerTree as FT
+import Data.Ropey.Classes as Cl
 import Unsafe.Coerce
 import Data.Coerce
+import qualified Data.List.Extra as List
+import GHC.Generics
+import Data.Foldable hiding (null)
+import Control.Applicative hiding (empty)
 
 newtype FingerTree v a = FT {unFT :: FT.FingerTree v (M v a)}
+  deriving (Semigroup, Monoid, Eq, Ord, Show, Generic)
+
+instance Foldable (FingerTree v) where
+  foldMap p = foldMap (p . unM) . unFT
+
+instance {-# OVERLAPS #-} Measured v a => Cl.Container (FingerTree v a) a where
+  cons = (<|)
+  snoc = (|>)
+  uncons c = case viewl c of
+    e FT.:< _ -> Just (e,c)
+    FT.EmptyL -> Nothing
+  unsnoc c = case viewr c of
+    _ FT.:> e -> Just (c,e)
+    FT.EmptyR -> Nothing
+  foldMapC = foldMap
+  unpack = toList
+  pack = fromList
+
+
+-- | TODO be smart about chunk sizes
+-- This could be more generic, but it will make instances less predictable
+-- TODO add an indexed constraint
+instance forall a b v. (Measured v a, Cl.Container a b) => Cl.Container (FingerTree v a) b where
+  -- | TODO make less inefficient
+  cons e = cons (pack [e] :: a)
+
+  -- | TODO make less inefficient
+  snoc c e = snoc c (pack [e] :: a)
+
+  uncons :: FingerTree v a -> Maybe (b, FingerTree v a)
+  uncons c = do
+    (e :: a, c') <- uncons c
+    let wrk (b, a) = (b, cons a c')
+    (wrk <$> uncons e) <|> uncons c'
+
+  unsnoc :: FingerTree v a -> Maybe (FingerTree v a, b)
+  unsnoc c = do
+    (c', e :: a) <- unsnoc c
+    let wrk (a,b) = (snoc c' a, b)
+    (wrk <$> unsnoc e) <|> unsnoc c'
+
+  foldMapC :: forall m. Monoid m => (b -> m) -> FingerTree v a -> m
+  foldMapC f = foldMapC (foldMapC f :: a -> m)
+
+  unpack :: FingerTree v a -> [b]
+  unpack ft = do
+    (a :: a) <- unpack ft
+    unpack a
+
+  pack :: [b] -> FingerTree v a
+  pack =
+    (pack :: [a] -> FingerTree v a) .
+    map (pack :: [b] -> a) .
+    List.chunksOf chunkSize
 
 -- | This type is used to satisfy the functional dependency in `Measured`
-newtype M measure container = M container
+newtype M measure container = M {unM :: container}
+  deriving (Eq, Ord, Show, Generic, Semigroup, Monoid)
 
 instance Functor (M measure) where
   fmap f (M x) = M $ f x
@@ -54,6 +117,10 @@ instance Measured measure container
       => FT.Measured measure (M measure container) where
   measure (M container) = measure container
   -- not recursive due to funny haskell qualification rules
+
+instance Measured measure container
+      => Measured measure (FingerTree measure container) where
+  measure = foldMap measure
 
 -- | /O(1)/. The empty sequence.
 empty :: Measured v a => FingerTree v a
